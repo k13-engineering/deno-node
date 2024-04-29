@@ -11,7 +11,7 @@ import type { Stats } from "node:fs";
 
 const compilerOptions = {
     allowImportingTsExtensions: true,
-    module: typescript.ModuleKind.ESNext,
+    module: typescript.ModuleKind.NodeNext,
     moduleResolution: typescript.ModuleResolutionKind.NodeNext,
     target: typescript.ScriptTarget.ESNext,
     inlineSourceMap: true,
