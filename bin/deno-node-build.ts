@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 // @ts-ignore
 import { create as createBuilder } from "../lib/builder/index.ts";
 // @ts-ignore
