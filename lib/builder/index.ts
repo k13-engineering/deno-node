@@ -2,12 +2,19 @@ import { TMaybeError } from "../util.ts";
 // @ts-ignore
 import { transpileCode as transpileToTSComments } from "commentscript";
 import { analyzeImports } from "./import-analyzer.ts";
+import { generate as generateDeclarationFile } from "../declaration-file.ts";
+// @ts-ignore
 import path from "node:path";
 
 type TReadFileResult = TMaybeError<{ content: string }>;
 type TWriteFileResult = TMaybeError<{}>;
 type TBuildResult = TMaybeError<{}>;
-type TTransformResult = TMaybeError<{ transformedFilePath: string }>;
+
+interface ITransformedFile {
+    es6FilePath: string;
+    declarationFilePath: string | undefined;
+};
+type TTransformResult = TMaybeError<{ transformed: ITransformedFile }>;
 
 interface ICodeReplacement {
     replacement: string;
@@ -43,22 +50,14 @@ const create = ({
     writeOutputFile: ({ filePath, content }: { filePath: string, content: string }) => Promise<TWriteFileResult>;
 }) => {
 
-    let builtFiles: { [filePath: string]: { transformedFilePath: string } } = {};
+    let builtFiles: { [filePath: string]: ITransformedFile } = {};
 
-    const transformTree = async ({ filePath, transpile }: { filePath: string, transpile: boolean }): Promise<TMaybeError<{ code: string }>> => {
-        const readResult = await readInputFile({ filePath });
-        if (readResult.error !== undefined) {
-            return {
-                error: readResult.error
-            };
-        }
+    const transformTree = async ({ scriptDirectory, code, transpile }: { scriptDirectory: string, code: string, transpile: boolean }): Promise<TMaybeError<{ code: string }>> => {
 
-        const content = readResult.content;
-
-        let transpiledCode: string = content;
+        let transpiledCode: string = code;
 
         if (transpile) {
-            const transpileResult = await transpileToTSComments({ code: content }).then((result: any) => {
+            const transpileResult = await transpileToTSComments({ code }).then((result: any) => {
                 return { error: undefined, transpiledCode: result.transpiledCode };
             }, (error: Error) => {
                 return { error: error, transpiledCode: undefined };
@@ -86,9 +85,7 @@ const create = ({
 
         for (const imp of imports) {
             if (imp.value.startsWith("./") || imp.value.startsWith("../")) {
-
-                const currentScriptDir = path.dirname(filePath);
-                const referencedFilePath = path.join(currentScriptDir, imp.value);
+                const referencedFilePath = path.join(scriptDirectory, imp.value);
                 const normalizedPath = path.normalize(referencedFilePath);
 
                 if (normalizedPath.startsWith("../")) {
@@ -104,10 +101,10 @@ const create = ({
                     };
                 }
 
-                const transformedFilePath = buildResult.transformedFilePath;
+                const transformedFilePath = buildResult.transformed.es6FilePath;
 
                 if (transformedFilePath !== normalizedPath) {
-                    let pathToImport = path.relative(currentScriptDir, transformedFilePath);
+                    let pathToImport = path.relative(scriptDirectory, transformedFilePath);
                     if (!pathToImport.startsWith("../")) {
                         pathToImport = `./${pathToImport}`;
                     }
@@ -134,6 +131,78 @@ const create = ({
         };
     };
 
+    const declarationTree = async ({ scriptDirectory, code }: { scriptDirectory:string, code: string }): Promise<TMaybeError<{ declaration: string }>> => {
+
+        const declResult = await generateDeclarationFile({ code });
+        if (declResult.error !== undefined) {
+            return {
+                error: declResult.error
+            };
+        }
+
+        const analyzeResult = analyzeImports({ code: declResult.declaration });
+        if (analyzeResult.error !== undefined) {
+            return {
+                error: analyzeResult.error
+            };
+        }
+
+        const imports = analyzeResult.result.imports;
+        let replacements: ICodeReplacement[] = [];
+
+        for (const imp of imports) {
+            if (imp.value.startsWith("./") || imp.value.startsWith("../")) {
+                const referencedFilePath = path.join(scriptDirectory, imp.value);
+                const normalizedPath = path.normalize(referencedFilePath);
+
+                if (normalizedPath.startsWith("../")) {
+                    return {
+                        error: Error(`relative import "${normalizedPath}" is outside of the project root`)
+                    };
+                }
+
+                const buildResult = await maybeBuildTree({ filePath: normalizedPath });
+                if (buildResult.error !== undefined) {
+                    return {
+                        error: buildResult.error
+                    };
+                }
+
+                const declarationFilePath = buildResult.transformed.declarationFilePath;
+                if (declarationFilePath === undefined) {
+                    return {
+                        error: Error(`no declaration file for "${normalizedPath}"`)
+                    };
+                }
+
+                if (declarationFilePath !== normalizedPath) {
+                    let pathToImport = path.relative(scriptDirectory, declarationFilePath);
+                    if (!pathToImport.startsWith("../")) {
+                        pathToImport = `./${pathToImport}`;
+                    }
+
+                    replacements = [
+                        ...replacements,
+                        {
+                            range: {
+                                from: imp.range.from,
+                                to: imp.range.to
+                            },
+                            replacement: `"${pathToImport}"`
+                        }
+                    ];
+                }
+            }
+        }
+
+        const finalDeclaration = rewriteCode({ code: declResult.declaration, replacements });
+
+        return {
+            error: undefined,
+            declaration: finalDeclaration
+        };
+    };
+
     const maybeBuildTree = async ({ filePath }: { filePath: string }): Promise<TTransformResult> => {
 
         // if we already built the file, return the result
@@ -141,7 +210,7 @@ const create = ({
         if (transformedFile !== undefined) {
             return {
                 error: undefined,
-                transformedFilePath: transformedFile.transformedFilePath
+                transformed: transformedFile
             };
         }
 
@@ -171,32 +240,71 @@ const create = ({
         fileEndingHandler();
 
         const fileNameWithoutEnding = filePath.substring(0, filePath.length - fileEnding.length);
-        const transformedFilePath = `${fileNameWithoutEnding}.js`;
+        const es6FilePath = `${fileNameWithoutEnding}.js`;
+        const declarationFilePath = `${fileNameWithoutEnding}.d.ts`;
+        const scriptDirectory = path.dirname(filePath);
+
+        const result = {
+            es6FilePath,
+            declarationFilePath: transpile ? declarationFilePath : undefined
+        };
 
         builtFiles = {
             ...builtFiles,
-            [filePath]: {
-                transformedFilePath
-            }
+            [filePath]: result
         };
 
-        const transformResult = await transformTree({ filePath, transpile });
+        const readResult = await readInputFile({ filePath });
+        if (readResult.error !== undefined) {
+            return {
+                error: readResult.error
+            };
+        }
+
+        const transformResult = await transformTree({
+            scriptDirectory,
+            code: readResult.content,
+            transpile
+        });
         if (transformResult.error !== undefined) {
             return {
                 error: transformResult.error
             };
         }
 
-        const writeResult = await writeOutputFile({ filePath: transformedFilePath, content: transformResult.code });
+        const writeResult = await writeOutputFile({
+            filePath: es6FilePath,
+            content: transformResult.code
+        });
         if (writeResult.error !== undefined) {
             return {
                 error: writeResult.error
             };
         }
 
+        if (transpile) {
+
+            const declResult = await declarationTree({ scriptDirectory, code: readResult.content });
+            if (declResult.error !== undefined) {
+                return {
+                    error: declResult.error
+                };
+            }
+
+            const writeDeclResult = await writeOutputFile({
+                filePath: declarationFilePath,
+                content: declResult.declaration
+            });
+            if (writeDeclResult.error !== undefined) {
+                return {
+                    error: writeDeclResult.error
+                };
+            }
+        }
+
         return {
             error: undefined,
-            transformedFilePath
+            transformed: result
         };
     };
 

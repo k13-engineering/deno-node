@@ -54,7 +54,9 @@ const analyzeImports = ({ code }: { code: string }): TImportAnalyzeReturn => {
                     ];
                     return;
                 }
-            }
+            },
+
+            fallback: "iteration"
         });
 
         return {
