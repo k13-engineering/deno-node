@@ -131,7 +131,7 @@ const create = ({
         };
     };
 
-    const declarationTree = async ({ scriptDirectory, code }: { scriptDirectory:string, code: string }): Promise<TMaybeError<{ declaration: string }>> => {
+    const declarationTree = async ({ scriptDirectory, code }: { scriptDirectory: string, code: string }): Promise<TMaybeError<{ declaration: string }>> => {
 
         const declResult = await generateDeclarationFile({ code });
         if (declResult.error !== undefined) {
@@ -175,23 +175,26 @@ const create = ({
                     };
                 }
 
-                if (declarationFilePath !== normalizedPath) {
-                    let pathToImport = path.relative(scriptDirectory, declarationFilePath);
-                    if (!pathToImport.startsWith("../")) {
-                        pathToImport = `./${pathToImport}`;
-                    }
+                // in declaration file, import the transpiled ES6 file
+                // e.g. -> import { foo } from "./foo.ts" --> import { foo } from "./foo.js"
 
-                    replacements = [
-                        ...replacements,
-                        {
-                            range: {
-                                from: imp.range.from,
-                                to: imp.range.to
-                            },
-                            replacement: `"${pathToImport}"`
-                        }
-                    ];
+                // we cannot import the declaration file, as it gives errors in the TypeScript compiler
+
+                let pathToImport = path.relative(scriptDirectory, buildResult.transformed.es6FilePath);
+                if (!pathToImport.startsWith("../")) {
+                    pathToImport = `./${pathToImport}`;
                 }
+
+                replacements = [
+                    ...replacements,
+                    {
+                        range: {
+                            from: imp.range.from,
+                            to: imp.range.to
+                        },
+                        replacement: `"${pathToImport}"`
+                    }
+                ];
             }
         }
 
