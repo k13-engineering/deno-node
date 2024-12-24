@@ -1,6 +1,6 @@
 import estraverse from "estraverse";
 import { parse as parseAst } from "@typescript-eslint/typescript-estree";
-import { TMaybeError } from "../util.ts";
+import type { TMaybeError } from "../util.ts";
 
 interface IImportStatement {
     value: string;

@@ -10,6 +10,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 // @ts-ignore
 import process from "node:process";
+import nodeUtil from "node:util";
 
 const { argv } = yargs(hideBin(process.argv))
     .option("root", {
@@ -84,7 +85,8 @@ for(const entryFilePath of entryFilePaths) {
 
     const { error } = await builder.build({ entryFilePath: relativeEntryFilePath });
     if (error !== undefined) {
-        console.error("Error during build", { error });
+
+        console.error(nodeUtil.inspect(Error("build failed", { cause: error }), { depth: 10, colors: true }));
         process.exit(-1);
     }
 }

@@ -1,4 +1,4 @@
-import { TMaybeError } from "../util.ts";
+import type { TMaybeError } from "../util.ts";
 // @ts-ignore
 import { transpileCode as transpileToTSComments } from "commentscript";
 import { analyzeImports } from "./import-analyzer.ts";
@@ -64,8 +64,20 @@ const create = ({
             });
 
             if (transpileResult.error !== undefined) {
+
+                if (transpileResult.error.location !== undefined) {
+                    const lines = code.split("\n");
+
+                    const lineNumber = transpileResult.error.location.start.line;
+                    const line = lines[lineNumber - 1];
+
+                    return {
+                        error: Error(`failed to transpile code, line number ${lineNumber}, line = "${line}"`, { cause: transpileResult.error })
+                    };
+                }
+
                 return {
-                    error: transpileResult.error
+                    error: Error(`failed to transpile code`, { cause: transpileResult.error })
                 };
             }
 
@@ -271,7 +283,7 @@ const create = ({
         });
         if (transformResult.error !== undefined) {
             return {
-                error: transformResult.error
+                error: Error(`failed to transform tree of "${filePath}"`, { cause: transformResult.error })
             };
         }
 
