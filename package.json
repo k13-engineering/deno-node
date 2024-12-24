@@ -27,5 +27,15 @@
         "build": "rm -rf dist/ && tsx bin/deno-node-build.ts --root . --out dist/ --entry lib/index.ts --entry lib/loader/preload.js --entry lib/loader/deno-loader.js --entry bin/deno-node.ts --entry bin/deno-node-build.ts",
         "test": "true",
         "lint": "true"
-    }
+    },
+    "license": "LGPL-2.1-only",
+    "author": "Simon Kadisch",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/k13-engineering/deno-node.git"
+    },
+    "bugs": {
+        "url": "https://github.com/k13-engineering/deno-node/issues"
+    },
+    "homepage": "https://github.com/k13-engineering/deno-node#readme"
 }
