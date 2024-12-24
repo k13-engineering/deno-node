@@ -24,6 +24,8 @@
         "tsx": "^4.7.3"
     },
     "scripts": {
-        "build": "rm -rf dist/ && tsx bin/deno-node-build.ts --root . --out dist/ --entry lib/index.ts --entry lib/loader/preload.js --entry lib/loader/deno-loader.js --entry bin/deno-node.ts --entry bin/deno-node-build.ts"
+        "build": "rm -rf dist/ && tsx bin/deno-node-build.ts --root . --out dist/ --entry lib/index.ts --entry lib/loader/preload.js --entry lib/loader/deno-loader.js --entry bin/deno-node.ts --entry bin/deno-node-build.ts",
+        "test": "true",
+        "lint": "true"
     }
 }
